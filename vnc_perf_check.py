@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 import socket
 import sys
@@ -103,10 +104,23 @@ class VncPerfCheck(object):
 
     def save_data(self):
         print 'Saving the data'
-        print self.perf_data
+        # print self.perf_data
+        with open(self.output_file_name, 'w') as outfile:
+            json.dump(self.perf_data, outfile)
+
+        for plugin, plugin_data in self.perf_data.items():
+            print 'Plugin : ', plugin
+            for res, data in plugin_data.items():
+                print '\tResource : ', res
+                for k, v in data.items():
+                    print '\t\t %s : %s ' % (k, v)
+                print '\n\n'
+            print '\n*************************\n'
+        print '\n\n'
 
     def _run_resource_list(self, resource):
         result = {}
+        average_time = 0.0
         for i in range(self.no_of_runs):
             run = 'run_%s' % str(i)
             print 'Starting : ', run
@@ -118,13 +132,17 @@ class VncPerfCheck(object):
             result[run] = {'time_taken': str(end_time - start_time),
                            resource: len(net_list)}
             time.sleep(5)
+            average_time += (end_time - start_time)
 
+        average_time /= self.no_of_runs
+        result['average_time'] = average_time
         return result
 
     def _run_performance_tests(self):
         perf_result = {}
         # run net-list first
-        for resource in ['networks', 'ports', 'subnets']:
+        for resource in ['networks', 'ports', 'subnets', 'floatingips',
+                         'security_groups', 'routers', 'security_group_rules']:
             print 'Running the resource list for : ', resource
             perf_result[resource] = self._run_resource_list(resource)
 
