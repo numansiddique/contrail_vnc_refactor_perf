@@ -49,6 +49,12 @@ class VncPerfClient(object):
     def start_neutron_with_contrail_v3(self):
         self._send_and_recv_msg("v3")
 
+    def start_neutron_with_contrail_v3_cassandra(self):
+        self._send_and_recv_msg("v4")
+
+    def stop_neutron_with_contrail_v3_cassandra(self):
+        self._send_and_recv_msg('r4')
+
     def disconnect(self):
         try:
             self.sock.shutdown(socket.SHUT_RD)
@@ -60,7 +66,7 @@ class VncPerfClient(object):
 
 class VncPerfCheck(object):
 
-    def __init__(self, server_ip, server_port, output_file_name):
+    def __init__(self, args):
         kwargs = {}
         kwargs['username'] = os.environ.get('OS_USERNAME')
         kwargs['tenant_name'] = os.environ.get('OS_TENANT_NAME')
@@ -70,13 +76,16 @@ class VncPerfCheck(object):
         kwargs['password'] = os.environ.get('OS_PASSWORD')
         self.client = NeutronClient(**kwargs)
 
+        self._args = args
+
         try:
-            self.vnc_per_client = VncPerfClient(server_ip, server_port)
+            self.vnc_per_client = VncPerfClient(self._args.server_ip,
+                                                self._args.port)
         except:
             print 'Connecting to the server failed . check if the server is up'
             sys.exit(0)
 
-        self.output_file_name = output_file_name
+        self.output_file_name = self._args.output_file
         self.perf_data = {}
         self.no_of_runs = 3
 
@@ -93,6 +102,15 @@ class VncPerfCheck(object):
         time.sleep(10)
         print 'Starting the resource list tests for contrail plugin v3'
         self.perf_data['contrail_plugin_v3'] = self._run_performance_tests()
+
+        print 'Sending the command to start contrail plugin v3 + cassandra'
+        self.vnc_per_client.start_neutron_with_contrail_v3_cassandra()
+        time.sleep(10)
+        print 'Starting the resource list tests for contrail plugin cassandra v3'
+        self.perf_data['contrail_plugin_v3_cassandra'] = (
+            self._run_performance_tests())
+
+        self.vnc_per_client.stop_neutron_with_contrail_v3_cassandra()
         print 'Done for now'
 
     def stop(self):
@@ -162,9 +180,10 @@ parser.add_argument('--output_file', metavar='output_file', type=str,
                     required=True,
                     help='Result output file name')
 
+
 args = parser.parse_args()
 
-vnc_perf_check = VncPerfCheck(args.server_ip, args.port, args.output_file)
+vnc_perf_check = VncPerfCheck(args)
 
 print 'Starting the performance checking'
 vnc_perf_check.start()

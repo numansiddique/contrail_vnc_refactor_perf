@@ -9,10 +9,11 @@ SERVER_PORT = '10001'
 
 
 class VncPerfCmdReceiver():
-    def __init__(self, v2_config_file, v3_config_file, is_devstack):
-        self.v2_config_file = v2_config_file
-        self.v3_config_file = v3_config_file
-        self.is_devstack = is_devstack
+    def __init__(self, args):
+        self._args = args
+        self.v2_config_file = self._args.v2_config_file
+        self.v3_config_file = self._args.v3_config_file
+        self.is_devstack = self._args.is_devstack
         self.port = None
         if is_devstack:
             self.start_neutron_cmd = "sudo start neutron-server"
@@ -51,6 +52,11 @@ class VncPerfCmdReceiver():
 
         time.sleep(2)
         print 'Starting the neutron server'
+        if command == "v4":
+            ret_val = self._adjust_plugin_path()
+            if ret_val != "OK 5":
+                return ret_val
+
         # start the neutron server
         try:
             subprocess.check_call(self.start_neutron_cmd.split(" "))
@@ -62,6 +68,33 @@ class VncPerfCmdReceiver():
         time.sleep(5)
         print 'Returning OK'
         return 'OK 4'
+
+    def _adjust_plugin_path(self, revert=False):
+        if not revert:
+            path_1 = self._args.v3_path
+            path_2 = self._args.v3_path + '_temp'
+            path_3 = self._args.v3_cass_path
+        else:
+            path_1 = self._args.v3_path
+            path_2 = self._args.v3_cass_path
+            path_3 = self._args.v3_path + '_temp'
+
+        mv_cmd = "sudo mv %s %s" % (path_1, path_2)
+
+        try:
+            subprocess.check_call(mv_cmd.split(" "))
+        except Exception as e:
+            print 'Exception while executing the cmd : ', mv_cmd, e
+            return 'KO 5'
+
+        mv_cmd = "sudo mv %s %s" % (path_3, path_1)
+        try:
+            subprocess.check_call(mv_cmd.split(" "))
+        except Exception as e:
+            print 'Exception while executing the cmd : ', mv_cmd, e
+            return 'KO 6'
+
+        return "OK 5"
 
     def start(self, host, port):
         self.host = host
@@ -81,8 +114,11 @@ class VncPerfCmdReceiver():
                         print 'recieved returned None'
                         break
                     print 'Received command ', msg
-                    if msg in ['v2', 'v3']:
+                    if msg in ['v2', 'v3', 'v4']:
                         status_msg = self._start_neutron_server(msg)
+                        clientsocket.send(status_msg)
+                    else if msg in ['r4']:
+                        status_msg = self._adjust_plugin_path(revert=True)
                         clientsocket.send(status_msg)
                     else:
                         print 'Invalid message. Ignoring it : ', msg
@@ -124,10 +160,18 @@ parser.add_argument('--port', metavar='port', type=str,
                     default=SERVER_PORT,
                     help='Server port to listen on for commands')
 
+parser.add_argument('--v3-path', metavar='v3_path', type=str,
+                    required=False,
+                    default=None,
+                    help='Absolute path of contrail-neutron-plugin with v2/v3')
+
+parser.add_argument('--v3-cass-path', metavar='v3_cass_path', type=str,
+                    required=True,
+                    help='Absolute path of contrail-neutron-plugin with v3-cassandra')
+
 args = parser.parse_args()
 
-vnc_cmd_receiver = VncPerfCmdReceiver(args.v2_config_file, args.v3_config_file,
-                                      args.is_devstack)
+vnc_cmd_receiver = VncPerfCmdReceiver(args)
 
 print 'Starting the Server to receive commands'
 vnc_cmd_receiver.start(args.host, args.port)
